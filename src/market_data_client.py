@@ -1,7 +1,9 @@
+import csv
 import time
+from pathlib import Path
 
 import requests
-
+DATA_FILE = Path("data/market_data.csv")
 def fetch_ticker(product_id):
     url = f"https://api.exchange.coinbase.com/products/{product_id}/ticker"
 
@@ -18,6 +20,34 @@ def fetch_ticker(product_id):
 
     return None
 
+def save_ticker(product_id, data):
+    DATA_FILE.parent.mkdir(exist_ok=True)
+
+    file_exists = DATA_FILE.exists()
+
+    price = float(data["price"])
+    bid = float(data["bid"])
+    ask = float(data["ask"])
+    spread = ask - bid
+
+    with DATA_FILE.open("a", newline="") as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow(
+                ["time", "symbol", "price", "bid", "ask", "spread"]
+            )
+
+        writer.writerow(
+            [
+                data["time"],
+                product_id,
+                price,
+                bid,
+                ask,
+                spread,
+            ]
+        )
 
 def display_ticker(product_id, data, previous_price):
     price = float(data["price"])
@@ -68,6 +98,7 @@ else:
             data = fetch_ticker(product_id)
 
             if data is not None:
+                save_ticker(product_id, data)
                 previous_price = display_ticker(
                     product_id,
                     data,

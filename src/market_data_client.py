@@ -1,5 +1,6 @@
 import csv
 import time
+from src.calculations import calculate_movement, calculate_spread
 from pathlib import Path
 
 import requests
@@ -28,7 +29,7 @@ def save_ticker(product_id, data):
     price = float(data["price"])
     bid = float(data["bid"])
     ask = float(data["ask"])
-    spread = ask - bid
+    spread = calculate_spread(bid, ask)
 
     with DATA_FILE.open("a", newline="") as file:
         writer = csv.writer(file)
@@ -53,19 +54,9 @@ def display_ticker(product_id, data, previous_price):
     price = float(data["price"])
     bid = float(data["bid"])
     ask = float(data["ask"])
-    spread = ask - bid
+    spread = calculate_spread(bid, ask)
 
-    if previous_price is None:
-        movement = "Starting price"
-    else:
-        difference = price - previous_price
-
-        if difference > 0:
-            movement = f"UP ${difference:,.2f}"
-        elif difference < 0:
-            movement = f"DOWN ${abs(difference):,.2f}"
-        else:
-            movement = "No change"
+    movement = calculate_movement(price, previous_price)
 
     print(f"\nSymbol: {product_id}")
     print(f"Price: ${price:,.2f}")

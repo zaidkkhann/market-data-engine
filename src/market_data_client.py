@@ -80,21 +80,20 @@ def display_ticker(product_id, data, previous_price):
 
     return price
 
-symbols = {
-    "BTC": "BTC-USD",
-    "ETH": "ETH-USD",
-    "SOL": "SOL-USD",
-}
+def main():
+    choice = input("Choose BTC, ETH, or SOL: ").strip().upper()
 
-choice = input("Choose BTC, ETH, or SOL: ").strip().upper()
+    if choice not in SYMBOLS:
+        logger.warning("Invalid symbol selected: %s", choice)
+        return
 
-if choice not in SYMBOLS:
-    logger.warning("Invalid symbol selected: %s", choice)
-else:
     product_id = SYMBOLS[choice]
     previous_price = None
 
-    logger.info("Started monitoring %s. Press Ctrl + C to stop.", product_id)
+    logger.info(
+        "Started monitoring %s. Press Ctrl + C to stop.",
+        product_id,
+    )
 
     try:
         while True:
@@ -112,3 +111,7 @@ else:
 
     except KeyboardInterrupt:
         logger.info("Market monitor stopped.")
+
+
+if __name__ == "__main__":
+    main()

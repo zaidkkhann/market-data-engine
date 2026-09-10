@@ -30,15 +30,21 @@ def create_market_prices_table():
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
     """
+    create_index_query = """
+    CREATE INDEX IF NOT EXISTS
+        idx_market_prices_symbol_recorded_at
+    ON market_prices (symbol, recorded_at DESC);
+    """
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(create_table_query)
+            cursor.execute(create_index_query)
 
         connection.commit()
 
     print("Table created successfully: market_prices")
-    
+
 def insert_market_price(product_id, data):
     price = float(data["price"])
     bid = float(data["bid"])
@@ -71,6 +77,22 @@ def insert_market_price(product_id, data):
             cursor.execute(insert_query, values)
 
         connection.commit()
+def get_latest_market_prices(product_id, limit=5):
+    select_query = """
+        SELECT recorded_at, symbol, price, bid, ask, spread
+        FROM market_prices
+        WHERE symbol = %s
+        ORDER BY recorded_at DESC
+        LIMIT %s;
+    """
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                select_query,
+                (product_id, limit),
+            )
+            return cursor.fetchall()
 
 def test_connection():
     with get_connection() as connection:

@@ -4,6 +4,7 @@ import logging
 import requests
 
 from src.calculations import calculate_movement, calculate_spread
+from src.database import insert_market_price
 from src.config import (
     BASE_URL,
     DATA_FILE,
@@ -101,6 +102,7 @@ def main():
 
             if data is not None:
                 save_ticker(product_id, data)
+                insert_market_price(product_id, data)
                 previous_price = display_ticker(
                     product_id,
                     data,

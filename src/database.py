@@ -45,7 +45,7 @@ def create_market_prices_table():
 
     print("Table created successfully: market_prices")
 
-def insert_market_price(product_id, data):
+def insert_market_price(product_id, data, connection=None):
     price = float(data["price"])
     bid = float(data["bid"])
     ask = float(data["ask"])
@@ -72,11 +72,21 @@ def insert_market_price(product_id, data):
         spread,
     )
 
-    with get_connection() as connection:
+    owns_connection = connection is None
+
+    if owns_connection:
+        connection = get_connection()
+
+    try:
         with connection.cursor() as cursor:
             cursor.execute(insert_query, values)
 
         connection.commit()
+    finally:
+        if owns_connection:
+            connection.close()
+
+
 def get_latest_market_prices(product_id, limit=5):
     select_query = """
         SELECT recorded_at, symbol, price, bid, ask, spread

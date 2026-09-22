@@ -1,11 +1,22 @@
 import asyncio
 import json
+import logging
 import time
 
+import psycopg
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from src.config import WEBSOCKET_URL
 from src.database import get_connection, insert_market_price
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_ticker(data):
@@ -17,7 +28,7 @@ def normalize_ticker(data):
     }
 
 
-async def stream_ticker(product_id):
+async def consume_stream(product_id):
     subscribe_message = {
         "type": "subscribe",
         "product_ids": [product_id],
@@ -27,9 +38,13 @@ async def stream_ticker(product_id):
     last_saved_time = 0
 
     with get_connection() as database_connection:
-        async with websockets.connect(WEBSOCKET_URL) as websocket:
+        async with websockets.connect(
+            WEBSOCKET_URL,
+            ping_interval=20,
+            ping_timeout=20,
+        ) as websocket:
             await websocket.send(json.dumps(subscribe_message))
-            print(f"Connected to live ticker: {product_id}")
+            logger.info("Connected to live ticker: %s", product_id)
 
             while True:
                 message = await websocket.recv()
@@ -38,11 +53,12 @@ async def stream_ticker(product_id):
                 if data.get("type") != "ticker":
                     continue
 
-                print(
-                    f'{data["time"]} | {data["product_id"]} | '
-                    f'Price: ${float(data["price"]):,.2f} | '
-                    f'Bid: ${float(data["best_bid"]):,.2f} | '
-                    f'Ask: ${float(data["best_ask"]):,.2f}'
+                logger.info(
+                    "%s | Price: $%.2f | Bid: $%.2f | Ask: $%.2f",
+                    data["product_id"],
+                    float(data["price"]),
+                    float(data["best_bid"]),
+                    float(data["best_ask"]),
                 )
 
                 current_time = time.monotonic()
@@ -59,6 +75,32 @@ async def stream_ticker(product_id):
                     last_saved_time = current_time
 
 
+async def stream_ticker(product_id):
+    reconnect_delay = 1
+
+    while True:
+        try:
+            await consume_stream(product_id)
+            reconnect_delay = 1
+
+        except (
+            ConnectionClosed,
+            OSError,
+            psycopg.Error,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+        ) as error:
+            logger.warning(
+                "Stream interrupted: %s. Reconnecting in %s seconds...",
+                error,
+                reconnect_delay,
+            )
+
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, 30)
+
+
 def main():
     product_id = input(
         "Choose BTC-USD, ETH-USD, or SOL-USD: "
@@ -67,13 +109,13 @@ def main():
     supported_products = {"BTC-USD", "ETH-USD", "SOL-USD"}
 
     if product_id not in supported_products:
-        print("Invalid product.")
+        logger.error("Invalid product.")
         return
 
     try:
         asyncio.run(stream_ticker(product_id))
     except KeyboardInterrupt:
-        print("\nWebSocket stream stopped.")
+        logger.info("WebSocket stream stopped.")
 
 
 if __name__ == "__main__":

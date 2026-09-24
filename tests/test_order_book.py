@@ -72,3 +72,56 @@ def test_empty_book_returns_none():
 def test_invalid_side_raises_error(order_book):
     with pytest.raises(ValueError):
         order_book.update("invalid", "100.00", "1.0")
+
+def test_load_snapshot():
+    book = OrderBook("BTC-USD")
+
+    bids = [
+        ["100.00", "2.0"],
+        ["99.00", "3.0"],
+    ]
+
+    asks = [
+        ["101.00", "1.5"],
+        ["102.00", "4.0"],
+    ]
+
+    book.load_snapshot(bids, asks)
+
+    assert book.best_bid() == Decimal("100.00")
+    assert book.best_ask() == Decimal("101.00")
+    assert book.spread() == Decimal("1.00")
+
+
+def test_snapshot_replaces_existing_book():
+    book = OrderBook("BTC-USD")
+
+    book.update("buy", "90.00", "5.0")
+    book.update("sell", "110.00", "5.0")
+
+    book.load_snapshot(
+        bids=[["100.00", "2.0"]],
+        asks=[["101.00", "3.0"]],
+    )
+
+    assert Decimal("90.00") not in book.bids
+    assert Decimal("110.00") not in book.asks
+    assert book.best_bid() == Decimal("100.00")
+    assert book.best_ask() == Decimal("101.00")
+
+
+def test_live_updates_after_snapshot():
+    book = OrderBook("BTC-USD")
+
+    book.load_snapshot(
+        bids=[["100.00", "2.0"]],
+        asks=[["101.00", "3.0"]],
+    )
+
+    book.update("buy", "100.50", "1.25")
+    book.update("sell", "101.00", "0")
+    book.update("sell", "101.50", "2.5")
+
+    assert book.best_bid() == Decimal("100.50")
+    assert book.best_ask() == Decimal("101.50")
+    assert book.spread() == Decimal("1.00")

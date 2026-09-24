@@ -7,6 +7,16 @@ class OrderBook:
         self.bids = {}
         self.asks = {}
 
+    def load_snapshot(self, bids, asks):
+        self.bids.clear()
+        self.asks.clear()
+
+        for price, size in bids:
+            self.update("buy", price, size)
+
+        for price, size in asks:
+            self.update("sell", price, size)
+
     def update(self, side, price, size):
         price = Decimal(str(price))
         size = Decimal(str(size))

@@ -3,12 +3,21 @@ import json
 import time
 
 import websockets
+import logging
+
+from websockets.exceptions import ConnectionClosed
 
 from src.config import WEBSOCKET_URL
 from src.order_book import OrderBook
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
 
 
-async def stream_order_book(product_id):
+async def consume_order_book(product_id):
     order_book = OrderBook(product_id)
 
     subscribe_message = {
@@ -82,7 +91,41 @@ async def stream_order_book(product_id):
 
                 last_display_time = current_time
 
+async def stream_order_book(product_id):
+    reconnect_delay = 1
 
+    while True:
+        connection_started = time.monotonic()
+
+        try:
+            await consume_order_book(product_id)
+
+        except (
+            ConnectionClosed,
+            OSError,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+            RuntimeError,
+        ) as error:
+            connection_duration = time.monotonic() - connection_started
+
+            if connection_duration >= 30:
+                reconnect_delay = 1
+
+            logger.warning(
+                "Order-book stream interrupted: %s",
+                error,
+            )
+
+            logger.info(
+                "Reconnecting in %s seconds...",
+                reconnect_delay,
+            )
+
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, 30)
+            
 def main():
     product_id = input(
         "Choose BTC-USD, ETH-USD, or SOL-USD: "

@@ -1,147 +1,87 @@
 from decimal import Decimal
 
-import pytest
-
-from src.orders import Order
-from src.positions import Portfolio, Position
-from src.risk import (
-    RiskLimitExceeded,
-    RiskManager,
-)
+from src.orders import OrderSide
+from src.positions import Portfolio
 
 
-@pytest.fixture
-def risk_manager():
-    return RiskManager(
-        max_order_quantity="2",
-        max_position_quantity="5",
-        max_order_notional="1000",
-        max_realized_loss="100",
-    )
+class RiskLimitExceeded(ValueError):
+    pass
 
 
-def test_accepts_order_within_limits(risk_manager):
-    order = Order(
-        "BTC-USD",
-        "buy",
-        "market",
-        "1",
-    )
+class RiskManager:
+    def __init__(
+        self,
+        max_order_quantity,
+        max_position_quantity,
+        max_order_notional,
+        max_realized_loss,
+    ):
+        self.max_order_quantity = Decimal(
+            str(max_order_quantity)
+        )
+        self.max_position_quantity = Decimal(
+            str(max_position_quantity)
+        )
+        self.max_order_notional = Decimal(
+            str(max_order_notional)
+        )
+        self.max_realized_loss = Decimal(
+            str(max_realized_loss)
+        )
 
-    assert risk_manager.validate_order(
+    def validate_order(
+        self,
         order,
-        Portfolio(),
-        market_price="500",
-    )
+        portfolio: Portfolio,
+        market_price,
+    ):
+        market_price = Decimal(str(market_price))
 
+        if market_price <= 0:
+            raise ValueError(
+                "Market price must be greater than zero."
+            )
 
-def test_rejects_excessive_order_quantity(
-    risk_manager,
-):
-    order = Order(
-        "BTC-USD",
-        "buy",
-        "market",
-        "3",
-    )
+        if order.quantity > self.max_order_quantity:
+            raise RiskLimitExceeded(
+                "Order quantity exceeds the allowed limit."
+            )
 
-    with pytest.raises(RiskLimitExceeded):
-        risk_manager.validate_order(
-            order,
-            Portfolio(),
-            market_price="100",
+        order_notional = order.quantity * market_price
+
+        if order_notional > self.max_order_notional:
+            raise RiskLimitExceeded(
+                "Order notional exceeds the allowed limit."
+            )
+
+        position = portfolio.get_position(
+            order.product_id
         )
 
-
-def test_rejects_excessive_notional(
-    risk_manager,
-):
-    order = Order(
-        "BTC-USD",
-        "buy",
-        "market",
-        "2",
-    )
-
-    with pytest.raises(RiskLimitExceeded):
-        risk_manager.validate_order(
-            order,
-            Portfolio(),
-            market_price="600",
+        signed_quantity = (
+            order.quantity
+            if order.side == OrderSide.BUY
+            else -order.quantity
         )
 
-
-def test_rejects_excessive_projected_position(
-    risk_manager,
-):
-    portfolio = Portfolio()
-
-    portfolio.positions["BTC-USD"] = Position(
-        product_id="BTC-USD",
-        quantity=Decimal("4"),
-        average_entry_price=Decimal("100"),
-    )
-
-    order = Order(
-        "BTC-USD",
-        "buy",
-        "market",
-        "2",
-    )
-
-    with pytest.raises(RiskLimitExceeded):
-        risk_manager.validate_order(
-            order,
-            portfolio,
-            market_price="100",
+        projected_position = (
+            position.quantity + signed_quantity
         )
 
+        if (
+            abs(projected_position)
+            > self.max_position_quantity
+        ):
+            raise RiskLimitExceeded(
+                "Projected position exceeds the allowed limit."
+            )
 
-def test_allows_order_that_reduces_position(
-    risk_manager,
-):
-    portfolio = Portfolio()
+        if (
+            portfolio.total_realized_pnl()
+            <= -self.max_realized_loss
+        ):
+            raise RiskLimitExceeded(
+                "Maximum realized-loss limit has been reached."
+            )
 
-    portfolio.positions["BTC-USD"] = Position(
-        product_id="BTC-USD",
-        quantity=Decimal("4"),
-        average_entry_price=Decimal("100"),
-    )
-
-    order = Order(
-        "BTC-USD",
-        "sell",
-        "market",
-        "2",
-    )
-
-    assert risk_manager.validate_order(
-        order,
-        portfolio,
-        market_price="100",
-    )
-
-
-def test_rejects_orders_after_loss_limit(
-    risk_manager,
-):
-    portfolio = Portfolio()
-
-    portfolio.positions["BTC-USD"] = Position(
-        product_id="BTC-USD",
-        realized_pnl=Decimal("-100"),
-    )
-
-    order = Order(
-        "BTC-USD",
-        "buy",
-        "market",
-        "1",
-    )
-
-    with pytest.raises(RiskLimitExceeded):
-        risk_manager.validate_order(
-            order,
-            portfolio,
-            market_price="100",
-        )
+        return True
